@@ -1,0 +1,15 @@
+[project]
+name = "social-media"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.86.0",
+    "cloudinary>=1.44.1",
+    "fastapi>=0.135.2",
+    "gdown>=5.2.1",
+    "openai>=2.30.0",
+    "python-dotenv>=1.2.2",
+    "requests>=2.33.0",
+    "uvicorn>=0.42.0",
+]
