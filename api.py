@@ -83,6 +83,58 @@ def get_insights(post_id: str):
     return data
 
 
+@app.get("/analytics")
+def get_analytics():
+    log = carregar_log()
+    posts_with_ids = [p for p in log if p.get("post_id")]
+
+    enriched = []
+    for post in posts_with_ids:
+        post_id = post["post_id"]
+        metrics = {}
+        try:
+            resp = requests.get(
+                f"{GRAPH_API}/{post_id}/insights",
+                params={
+                    "metric": "plays,likes,comments,saved,reach",
+                    "access_token": META_ACCESS_TOKEN,
+                },
+                timeout=15,
+            )
+            data = resp.json()
+            if "data" in data:
+                for item in data["data"]:
+                    if "values" in item and item["values"]:
+                        metrics[item["name"]] = item["values"][0]["value"]
+                    elif "value" in item:
+                        metrics[item["name"]] = item["value"]
+        except Exception:
+            pass
+
+        posted_at = post.get("posted_at", "")
+        hour, day = None, None
+        if posted_at:
+            try:
+                dt = datetime.fromisoformat(posted_at)
+                hour = dt.hour
+                day = dt.weekday()  # 0=seg, 6=dom
+            except Exception:
+                pass
+
+        enriched.append({
+            **post,
+            "plays": metrics.get("plays", 0),
+            "likes": metrics.get("likes", 0),
+            "comments": metrics.get("comments", 0),
+            "saved": metrics.get("saved", 0),
+            "reach": metrics.get("reach", 0),
+            "hour": hour,
+            "day": day,
+        })
+
+    return {"posts": enriched}
+
+
 # ── Postar agora ──────────────────────────────────────────────────────────────
 
 posting_status = {"running": False, "last_result": None}
