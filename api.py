@@ -192,7 +192,7 @@ def update_settings(s: Settings):
 
 # ── Postar agora ──────────────────────────────────────────────────────────────
 
-posting_status = {"running": False, "last_result": None}
+posting_status = {"running": False, "current_step": None, "last_result": None}
 
 def _check_settings() -> str | None:
     """Retorna mensagem de bloqueio ou None se pode postar."""
@@ -216,19 +216,27 @@ def _check_settings() -> str | None:
 
 def executar_post():
     posting_status["running"] = True
+    posting_status["current_step"] = "Selecionando vídeo..."
     video = None
     try:
         video, filename = selecionar_video()
         if not video:
             posting_status["last_result"] = {"success": False, "message": "Nenhum vídeo disponível."}
             return
+        posting_status["current_step"] = "Transcrevendo áudio..."
         transcricao = transcrever(video)
+        posting_status["current_step"] = "Gerando legenda com IA..."
         legenda = gerar_legenda(transcricao)
+        posting_status["current_step"] = "Fazendo upload para Cloudinary..."
         video_url = fazer_upload_publico(video)
+        posting_status["current_step"] = "Criando container no Instagram..."
         container_id = criar_container(video_url, legenda)
+        posting_status["current_step"] = "Aguardando processamento do Instagram..."
         aguardar_processamento(container_id)
+        posting_status["current_step"] = "Publicando..."
         post_id = publicar(container_id)
         salvar_postado(filename, post_id, legenda, video_url)
+        posting_status["current_step"] = None
         posting_status["last_result"] = {
             "success": True,
             "post_id": post_id,
@@ -237,6 +245,7 @@ def executar_post():
             "posted_at": datetime.now().isoformat(),
         }
     except Exception as e:
+        posting_status["current_step"] = None
         posting_status["last_result"] = {"success": False, "message": str(e)}
     finally:
         posting_status["running"] = False
