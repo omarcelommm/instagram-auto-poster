@@ -136,10 +136,11 @@ def get_analytics():
         post_id = post["post_id"]
         metrics = {}
         try:
+            # Insights: reach, saved e plays para Reels
             resp = requests.get(
                 f"{GRAPH_API}/{post_id}/insights",
                 params={
-                    "metric": "plays,likes,comments,saved,reach",
+                    "metric": "reach,saved,ig_reels_aggregated_all_plays_count",
                     "access_token": META_ACCESS_TOKEN,
                 },
                 timeout=15,
@@ -147,10 +148,24 @@ def get_analytics():
             data = resp.json()
             if "data" in data:
                 for item in data["data"]:
-                    if "values" in item and item["values"]:
-                        metrics[item["name"]] = item["values"][0]["value"]
-                    elif "value" in item:
-                        metrics[item["name"]] = item["value"]
+                    val = item.get("value", item.get("values", [{}])[0].get("value", 0) if item.get("values") else 0)
+                    metrics[item["name"]] = val
+        except Exception:
+            pass
+
+        try:
+            # Curtidas e comentários vêm do objeto de mídia diretamente
+            resp2 = requests.get(
+                f"{GRAPH_API}/{post_id}",
+                params={
+                    "fields": "like_count,comments_count",
+                    "access_token": META_ACCESS_TOKEN,
+                },
+                timeout=15,
+            )
+            media = resp2.json()
+            metrics["likes"] = media.get("like_count", 0)
+            metrics["comments"] = media.get("comments_count", 0)
         except Exception:
             pass
 
@@ -166,7 +181,7 @@ def get_analytics():
 
         enriched.append({
             **post,
-            "plays": metrics.get("plays", 0),
+            "plays": metrics.get("ig_reels_aggregated_all_plays_count", 0),
             "likes": metrics.get("likes", 0),
             "comments": metrics.get("comments", 0),
             "saved": metrics.get("saved", 0),
