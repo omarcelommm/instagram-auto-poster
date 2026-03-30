@@ -49,13 +49,16 @@ def _drive_service():
     scopes = ["https://www.googleapis.com/auth/drive.readonly"]
     if GOOGLE_SERVICE_ACCOUNT_JSON:
         import json as _json
-        # Railway may store literal newlines in the private key — normalize before parsing
+        import re as _re
         raw = GOOGLE_SERVICE_ACCOUNT_JSON.replace('\r\n', '\n').replace('\r', '\n')
         try:
             info = _json.loads(raw)
         except _json.JSONDecodeError:
-            # Fallback: escape literal newlines inside the JSON string value
-            raw = raw.replace('\n', '\\n')
+            # Only escape literal newlines inside the private_key string value,
+            # leaving the structural JSON newlines untouched.
+            def _fix_key(m):
+                return m.group(1) + m.group(2).replace('\n', '\\n') + m.group(3)
+            raw = _re.sub(r'("private_key"\s*:\s*")(.*?)(")', _fix_key, raw, flags=_re.DOTALL)
             info = _json.loads(raw)
         if 'private_key' in info:
             info['private_key'] = info['private_key'].replace('\\n', '\n')
