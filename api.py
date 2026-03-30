@@ -218,14 +218,15 @@ NTFY_TOPIC = "marcelo-social-media-alerts"
 
 def _notify(title: str, message: str, priority: str = "default"):
     try:
-        requests.post(
+        r = requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=message.encode("utf-8"),
             headers={"Title": title, "Priority": priority},
-            timeout=5,
+            timeout=15,
         )
-    except Exception:
-        pass
+        print(f"ntfy: {r.status_code} — {title}")
+    except Exception as e:
+        print(f"ntfy erro: {e}")
 
 def executar_post():
     posting_status["running"] = True
