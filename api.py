@@ -65,6 +65,14 @@ def get_posts():
     return {"posts": list(reversed(log))}
 
 
+@app.get("/queue")
+def get_queue():
+    todos = listar_videos_drive()
+    postados = carregar_postados()
+    fila = [v["name"] for v in todos if v["name"] not in postados]
+    return {"queue": fila}
+
+
 # ── Analytics de um post ──────────────────────────────────────────────────────
 
 @app.get("/posts/{post_id}/insights")
