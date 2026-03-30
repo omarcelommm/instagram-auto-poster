@@ -17,6 +17,10 @@ import anthropic
 import requests
 import cloudinary
 import cloudinary.uploader
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+import io
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
@@ -31,11 +35,49 @@ INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1R6Bvuj5rwDDezfiIn649RUvTVLpyvQvb")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
-VIDEOS_DIR = Path(__file__).parent / "videos" / "Remessa 01"
 POSTED_LOG = Path(__file__).parent / "posted_videos.json"
 GRAPH_API = "https://graph.instagram.com/v22.0"
 NTFY_TOPIC = "marcelo-social-media-alerts"
+
+
+# ── Google Drive ───────────────────────────────────────────────────────────────
+
+def _drive_service():
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    if GOOGLE_SERVICE_ACCOUNT_JSON:
+        import json as _json
+        info = _json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
+    else:
+        sa_file = Path(__file__).parent / "service_account.json"
+        creds = service_account.Credentials.from_service_account_file(str(sa_file), scopes=scopes)
+    return build("drive", "v3", credentials=creds)
+
+
+def listar_videos_drive() -> list[dict]:
+    service = _drive_service()
+    result = service.files().list(
+        q=f"'{GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed=false and (mimeType contains 'video/')",
+        fields="files(id, name)",
+        pageSize=200,
+    ).execute()
+    return result.get("files", [])
+
+
+def baixar_video_drive(file_id: str, filename: str) -> Path:
+    service = _drive_service()
+    tmp = tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=False)
+    tmp.close()
+    request = service.files().get_media(fileId=file_id)
+    with open(tmp.name, "wb") as f:
+        downloader = MediaIoBaseDownload(f, request, chunksize=10 * 1024 * 1024)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+    return Path(tmp.name)
 
 
 # ── Controle de vídeos postados ────────────────────────────────────────────────
@@ -67,19 +109,22 @@ def salvar_postado(nome: str, post_id: str, legenda: str, video_url: str):
 
 # ── Selecionar vídeo ──────────────────────────────────────────────────────────
 
-def selecionar_video() -> Path | None:
+def selecionar_video() -> tuple[Path, str] | tuple[None, None]:
+    """Retorna (path_local_temporário, filename) ou (None, None)."""
     postados = carregar_postados()
-    todos = list(VIDEOS_DIR.glob("*.mp4")) + list(VIDEOS_DIR.glob("*.mov"))
+    todos = listar_videos_drive()
     if not todos:
-        print("Nenhum vídeo encontrado em videos/. Adicione vídeos e tente novamente.")
-        return None
-    videos = [v for v in todos if v.name not in postados]
-    if not videos:
-        print(f"Todos os {len(todos)} vídeos já foram postados. Adicione novos vídeos à pasta.")
-        return None
-    restantes = len(videos)
-    print(f"Vídeos restantes: {restantes}/{len(todos)}")
-    return random.choice(videos)
+        print("Nenhum vídeo encontrado no Google Drive.")
+        return None, None
+    disponiveis = [v for v in todos if v["name"] not in postados]
+    if not disponiveis:
+        print(f"Todos os {len(todos)} vídeos já foram postados.")
+        return None, None
+    print(f"Vídeos restantes: {len(disponiveis)}/{len(todos)}")
+    escolhido = random.choice(disponiveis)
+    print(f"Baixando do Drive: {escolhido['name']}...")
+    tmp_path = baixar_video_drive(escolhido["id"], escolhido["name"])
+    return tmp_path, escolhido["name"]
 
 
 # ── Transcrição ───────────────────────────────────────────────────────────────
@@ -111,7 +156,7 @@ def gerar_legenda(transcricao: str) -> str:
     print("Gerando legenda com Claude...")
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     resposta = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         messages=[{
             "role": "user",
@@ -236,11 +281,11 @@ def main():
     print("Instagram Auto Poster")
     print("=" * 50)
 
-    video = selecionar_video()
+    video, filename = selecionar_video()
     if not video:
         return
 
-    print(f"\nVídeo selecionado: {video.name}")
+    print(f"\nVídeo selecionado: {filename}")
 
     try:
         transcricao = transcrever(video)
@@ -252,14 +297,14 @@ def main():
         aguardar_processamento(container_id)
         post_id = publicar(container_id)
 
-        salvar_postado(video.name, post_id, legenda, video_url)
+        salvar_postado(filename, post_id, legenda, video_url)
         postados = carregar_postados()
-        todos = list(VIDEOS_DIR.glob("*.mp4")) + list(VIDEOS_DIR.glob("*.mov"))
+        todos = listar_videos_drive()
         restantes = len(todos) - len(postados)
         print(f"\nPostado com sucesso! ID: {post_id}")
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=f"Postado: {video.name}\nVídeos restantes: {restantes}/{len(todos)}".encode("utf-8"),
+            data=f"Postado: {filename}\nVídeos restantes: {restantes}/{len(todos)}".encode("utf-8"),
             headers={"Title": "✓ Instagram — Post publicado", "Priority": "default"},
             timeout=10,
         )
@@ -273,6 +318,8 @@ def main():
             timeout=10,
         )
         raise
+    finally:
+        video.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

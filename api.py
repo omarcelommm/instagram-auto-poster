@@ -16,6 +16,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 from postar_instagram import (
     carregar_log,
     carregar_postados,
+    listar_videos_drive,
     selecionar_video,
     transcrever,
     gerar_legenda,
@@ -24,7 +25,6 @@ from postar_instagram import (
     aguardar_processamento,
     publicar,
     salvar_postado,
-    VIDEOS_DIR,
     INSTAGRAM_ACCOUNT_ID,
     META_ACCESS_TOKEN,
     GRAPH_API,
@@ -44,7 +44,7 @@ app.add_middleware(
 
 @app.get("/status")
 def get_status():
-    todos = list(VIDEOS_DIR.glob("*.mp4")) + list(VIDEOS_DIR.glob("*.mov"))
+    todos = listar_videos_drive()
     postados = carregar_postados()
     restantes = len(todos) - len(postados)
     log = carregar_log()
@@ -89,8 +89,9 @@ posting_status = {"running": False, "last_result": None}
 
 def executar_post():
     posting_status["running"] = True
+    video = None
     try:
-        video = selecionar_video()
+        video, filename = selecionar_video()
         if not video:
             posting_status["last_result"] = {"success": False, "message": "Nenhum vídeo disponível."}
             return
@@ -100,11 +101,11 @@ def executar_post():
         container_id = criar_container(video_url, legenda)
         aguardar_processamento(container_id)
         post_id = publicar(container_id)
-        salvar_postado(video.name, post_id, legenda, video_url)
+        salvar_postado(filename, post_id, legenda, video_url)
         posting_status["last_result"] = {
             "success": True,
             "post_id": post_id,
-            "filename": video.name,
+            "filename": filename,
             "caption": legenda,
             "posted_at": datetime.now().isoformat(),
         }
@@ -112,6 +113,8 @@ def executar_post():
         posting_status["last_result"] = {"success": False, "message": str(e)}
     finally:
         posting_status["running"] = False
+        if video:
+            video.unlink(missing_ok=True)
 
 @app.post("/post/now")
 def post_now(background_tasks: BackgroundTasks):
