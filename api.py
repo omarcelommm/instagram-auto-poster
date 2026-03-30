@@ -214,14 +214,29 @@ def _check_settings() -> str | None:
         return f"Limite diário atingido ({posts_hoje}/{s['posts_per_day']} posts)."
     return None
 
+NTFY_TOPIC = "marcelo-social-media-alerts"
+
+def _notify(title: str, message: str, priority: str = "default"):
+    try:
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=message.encode("utf-8"),
+            headers={"Title": title, "Priority": priority},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
 def executar_post():
     posting_status["running"] = True
     posting_status["current_step"] = "Selecionando vídeo..."
     video = None
+    _notify("⏳ Instagram — Postagem iniciada", "Selecionando vídeo e iniciando processo...")
     try:
         video, filename = selecionar_video()
         if not video:
             posting_status["last_result"] = {"success": False, "message": "Nenhum vídeo disponível."}
+            _notify("⚠️ Instagram — Sem vídeos", "Nenhum vídeo disponível na fila.", priority="high")
             return
         posting_status["current_step"] = "Transcrevendo áudio..."
         transcricao = transcrever(video)
@@ -235,6 +250,7 @@ def executar_post():
         aguardar_processamento(container_id)
         posting_status["current_step"] = "Publicando..."
         post_id = publicar(container_id)
+        restantes = len(listar_videos_drive()) - len(carregar_postados())
         salvar_postado(filename, post_id, legenda, video_url)
         posting_status["current_step"] = None
         posting_status["last_result"] = {
@@ -244,9 +260,14 @@ def executar_post():
             "caption": legenda,
             "posted_at": datetime.now().isoformat(),
         }
+        _notify(
+            "✓ Instagram — Post publicado",
+            f"{filename}\n{restantes} vídeos restantes na fila.",
+        )
     except Exception as e:
         posting_status["current_step"] = None
         posting_status["last_result"] = {"success": False, "message": str(e)}
+        _notify("✗ Instagram — Falha na postagem", str(e), priority="high")
     finally:
         posting_status["running"] = False
         if video:
