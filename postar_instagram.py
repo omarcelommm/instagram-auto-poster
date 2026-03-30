@@ -155,14 +155,16 @@ def carregar_postados() -> set:
     return {e["filename"] for e in carregar_log()}
 
 def salvar_postado(nome: str, post_id: str, legenda: str, video_url: str):
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
+    tz_brasilia = timezone(timedelta(hours=-3))
+    agora = datetime.now(tz_brasilia)
     conn = _db_conn()
     if conn:
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO posted_videos (filename, post_id, caption, video_url, posted_at) VALUES (%s, %s, %s, %s, %s)",
-                    (nome, post_id, legenda, video_url, datetime.now()),
+                    (nome, post_id, legenda, video_url, agora),
                 )
             conn.commit()
             conn.close()
@@ -174,7 +176,7 @@ def salvar_postado(nome: str, post_id: str, legenda: str, video_url: str):
     log = carregar_log()
     log.append({
         "filename": nome, "post_id": post_id, "caption": legenda,
-        "video_url": video_url, "posted_at": datetime.now().isoformat(),
+        "video_url": video_url, "posted_at": agora.isoformat(),
     })
     POSTED_LOG.write_text(json.dumps(log, ensure_ascii=False, indent=2))
 

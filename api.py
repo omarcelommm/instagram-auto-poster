@@ -6,7 +6,9 @@ import os
 import json
 import subprocess
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+TZ_BRASILIA = timezone(timedelta(hours=-3))
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -214,7 +216,7 @@ def _check_settings() -> str | None:
     s = load_settings()
     if not s["auto_post"]:
         return "Postagem automática desativada nas configurações."
-    now = datetime.now()
+    now = datetime.now(TZ_BRASILIA)
     if now.weekday() not in s["active_days"]:
         return "Dia inativo nas configurações."
     if int(now.strftime("%H")) < int(s["start_hour"]):
@@ -274,7 +276,7 @@ def executar_post():
             "post_id": post_id,
             "filename": filename,
             "caption": legenda,
-            "posted_at": datetime.now().isoformat(),
+            "posted_at": datetime.now(TZ_BRASILIA).isoformat(),
         }
         _notify(
             "✓ Instagram — Post publicado",
