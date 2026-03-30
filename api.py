@@ -158,7 +158,7 @@ def get_analytics():
             resp2 = requests.get(
                 f"{GRAPH_API}/{post_id}",
                 params={
-                    "fields": "like_count,comments_count",
+                    "fields": "like_count,comments_count,video_views",
                     "access_token": META_ACCESS_TOKEN,
                 },
                 timeout=15,
@@ -166,6 +166,8 @@ def get_analytics():
             media = resp2.json()
             metrics["likes"] = media.get("like_count", 0)
             metrics["comments"] = media.get("comments_count", 0)
+            if media.get("video_views"):
+                metrics["ig_reels_aggregated_all_plays_count"] = media["video_views"]
         except Exception:
             pass
 
