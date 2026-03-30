@@ -277,18 +277,17 @@ def comprimir_video(video_path: Path) -> Path:
 
 
 def fazer_upload_publico(video_path: Path) -> str:
-    print("Fazendo upload do vídeo para Cloudinary...")
-    arquivo = comprimir_video(video_path)
+    tamanho_mb = video_path.stat().st_size / (1024 * 1024)
+    print(f"Fazendo upload do vídeo para Cloudinary ({tamanho_mb:.1f}MB)...")
     try:
         resultado = cloudinary.uploader.upload_large(
-            str(arquivo),
+            str(video_path),
             resource_type="video",
             folder="instagram_posts",
             chunk_size=6 * 1024 * 1024,
         )
     finally:
-        if arquivo != video_path:
-            arquivo.unlink(missing_ok=True)
+        pass
     url = resultado["secure_url"]
     print(f"URL pública: {url}")
     return url
