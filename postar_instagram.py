@@ -49,19 +49,25 @@ def _drive_service():
     scopes = ["https://www.googleapis.com/auth/drive.readonly"]
     if GOOGLE_SERVICE_ACCOUNT_JSON:
         import json as _json
+        import base64 as _b64
         import re as _re
-        raw = GOOGLE_SERVICE_ACCOUNT_JSON.replace('\r\n', '\n').replace('\r', '\n')
+        raw = GOOGLE_SERVICE_ACCOUNT_JSON.strip()
+        # Try base64-encoded JSON first (most reliable for env vars)
         try:
-            info = _json.loads(raw)
-        except _json.JSONDecodeError:
-            # Only escape literal newlines inside the private_key string value,
-            # leaving the structural JSON newlines untouched.
-            def _fix_key(m):
-                return m.group(1) + m.group(2).replace('\n', '\\n') + m.group(3)
-            raw = _re.sub(r'("private_key"\s*:\s*")(.*?)(")', _fix_key, raw, flags=_re.DOTALL)
-            info = _json.loads(raw)
-        if 'private_key' in info:
-            info['private_key'] = info['private_key'].replace('\\n', '\n')
+            decoded = _b64.b64decode(raw).decode('utf-8')
+            info = _json.loads(decoded)
+        except Exception:
+            # Fallback: raw JSON with newline normalization
+            raw = GOOGLE_SERVICE_ACCOUNT_JSON.replace('\r\n', '\n').replace('\r', '\n')
+            try:
+                info = _json.loads(raw)
+            except _json.JSONDecodeError:
+                def _fix_key(m):
+                    return m.group(1) + m.group(2).replace('\n', '\\n') + m.group(3)
+                raw = _re.sub(r'("private_key"\s*:\s*")(.*?)(")', _fix_key, raw, flags=_re.DOTALL)
+                info = _json.loads(raw)
+            if 'private_key' in info:
+                info['private_key'] = info['private_key'].replace('\\n', '\n')
         creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
     else:
         sa_file = Path(__file__).parent / "service_account.json"
