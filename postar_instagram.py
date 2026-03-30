@@ -157,7 +157,7 @@ def transcrever(video_path: Path) -> str:
         print("Extraindo áudio com ffmpeg...")
         subprocess.run(
             ["ffmpeg", "-i", str(video_path), "-vn", "-ar", "16000", "-ac", "1", "-b:a", "64k", audio_path, "-y"],
-            check=True, capture_output=True,
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
         )
         audio_mb = Path(audio_path).stat().st_size / (1024 * 1024)
         print(f"Áudio extraído: {audio_mb:.1f}MB — enviando para Whisper...")
@@ -217,7 +217,7 @@ def comprimir_video(video_path: Path) -> Path:
     subprocess.run(
         ["ffmpeg", "-i", str(video_path), "-vcodec", "libx264", "-crf", "28",
          "-acodec", "aac", "-b:a", "128k", "-movflags", "+faststart", tmp.name, "-y"],
-        check=True, capture_output=True,
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300,
     )
     return Path(tmp.name)
 
