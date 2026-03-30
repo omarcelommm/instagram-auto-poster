@@ -47,6 +47,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 POSTED_LOG = Path(__file__).parent / "posted_videos.json"
 GRAPH_API = "https://graph.instagram.com/v22.0"
+DATABASE_URL = os.getenv("DATABASE_URL")
 NTFY_TOPIC = "marcelo-social-media-alerts"
 
 
@@ -107,10 +108,44 @@ def baixar_video_drive(file_id: str, filename: str) -> Path:
 
 # ── Controle de vídeos postados ────────────────────────────────────────────────
 
+def _db_conn():
+    if not DATABASE_URL:
+        return None
+    import psycopg2
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS posted_videos (
+                id SERIAL PRIMARY KEY,
+                filename TEXT NOT NULL,
+                post_id TEXT,
+                caption TEXT,
+                video_url TEXT,
+                posted_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    conn.commit()
+    return conn
+
 def carregar_log() -> list:
+    conn = _db_conn()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT filename, post_id, caption, video_url, posted_at FROM posted_videos ORDER BY posted_at ASC")
+                rows = cur.fetchall()
+            conn.close()
+            return [
+                {"filename": r[0], "post_id": r[1], "caption": r[2], "video_url": r[3],
+                 "posted_at": r[4].isoformat() if r[4] else None}
+                for r in rows
+            ]
+        except Exception as e:
+            print(f"Erro ao ler banco: {e}")
+            conn.close()
+    # fallback: arquivo local
     if POSTED_LOG.exists():
         dados = json.loads(POSTED_LOG.read_text())
-        # migração: formato antigo era lista de strings
         if dados and isinstance(dados[0], str):
             return [{"filename": f} for f in dados]
         return dados
@@ -121,13 +156,25 @@ def carregar_postados() -> set:
 
 def salvar_postado(nome: str, post_id: str, legenda: str, video_url: str):
     from datetime import datetime
+    conn = _db_conn()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO posted_videos (filename, post_id, caption, video_url, posted_at) VALUES (%s, %s, %s, %s, %s)",
+                    (nome, post_id, legenda, video_url, datetime.now()),
+                )
+            conn.commit()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"Erro ao salvar no banco: {e}")
+            conn.close()
+    # fallback: arquivo local
     log = carregar_log()
     log.append({
-        "filename": nome,
-        "post_id": post_id,
-        "caption": legenda,
-        "video_url": video_url,
-        "posted_at": datetime.now().isoformat(),
+        "filename": nome, "post_id": post_id, "caption": legenda,
+        "video_url": video_url, "posted_at": datetime.now().isoformat(),
     })
     POSTED_LOG.write_text(json.dumps(log, ensure_ascii=False, indent=2))
 
