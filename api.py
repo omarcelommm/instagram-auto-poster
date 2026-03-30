@@ -85,7 +85,7 @@ def get_status():
     postados = carregar_postados()
     restantes = len(todos) - len(postados)
     log = carregar_log()
-    ultimo_post = log[-1] if log else None
+    ultimo_post = log[-1].get("posted_at") if log else None
     return {
         "total_videos": len(todos),
         "postados": len(postados),
