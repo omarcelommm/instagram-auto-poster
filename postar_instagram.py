@@ -13,6 +13,13 @@ import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 import openai
+
+# Garante que ffmpeg está no PATH (baixa automaticamente se não estiver instalado)
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+except ImportError:
+    pass
 import anthropic
 import requests
 import cloudinary
