@@ -149,13 +149,18 @@ def selecionar_video() -> tuple[Path, str] | tuple[None, None]:
 
 def transcrever(video_path: Path) -> str:
     print(f"Transcrevendo: {video_path.name}...")
+    tamanho_mb = video_path.stat().st_size / (1024 * 1024)
+    print(f"Tamanho do vídeo: {tamanho_mb:.1f}MB")
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         audio_path = tmp.name
     try:
+        print("Extraindo áudio com ffmpeg...")
         subprocess.run(
             ["ffmpeg", "-i", str(video_path), "-vn", "-ar", "16000", "-ac", "1", "-b:a", "64k", audio_path, "-y"],
             check=True, capture_output=True,
         )
+        audio_mb = Path(audio_path).stat().st_size / (1024 * 1024)
+        print(f"Áudio extraído: {audio_mb:.1f}MB — enviando para Whisper...")
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         with open(audio_path, "rb") as f:
             resultado = client.audio.transcriptions.create(
@@ -163,6 +168,7 @@ def transcrever(video_path: Path) -> str:
                 file=f,
                 language="pt",
             )
+        print(f"Transcrição concluída: {len(resultado.text)} caracteres")
         return resultado.text
     finally:
         Path(audio_path).unlink(missing_ok=True)
