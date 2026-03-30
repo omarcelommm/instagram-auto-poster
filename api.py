@@ -3,12 +3,15 @@ API backend para o painel do Instagram Auto Poster.
 """
 
 import os
+import json
 import subprocess
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
 import requests
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
@@ -31,6 +34,38 @@ from postar_instagram import (
 )
 
 app = FastAPI(title="Instagram Auto Poster API")
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+SETTINGS_FILE = Path(__file__).parent / "settings.json"
+
+DEFAULT_SETTINGS = {
+    "auto_post": True,
+    "posts_per_day": 3,
+    "interval_minutes": 240,
+    "start_hour": "07",
+    "end_hour": "21",
+    "active_days": [0, 1, 2, 3, 4, 5, 6],
+}
+
+def load_settings() -> dict:
+    if SETTINGS_FILE.exists():
+        try:
+            return {**DEFAULT_SETTINGS, **json.loads(SETTINGS_FILE.read_text())}
+        except Exception:
+            pass
+    return DEFAULT_SETTINGS.copy()
+
+def save_settings(data: dict):
+    SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+class Settings(BaseModel):
+    auto_post: bool
+    posts_per_day: int
+    interval_minutes: int
+    start_hour: str
+    end_hour: str
+    active_days: List[int]
 
 app.add_middleware(
     CORSMiddleware,
@@ -143,9 +178,41 @@ def get_analytics():
     return {"posts": enriched}
 
 
+# ── Settings endpoints ────────────────────────────────────────────────────────
+
+@app.get("/settings")
+def get_settings():
+    return load_settings()
+
+@app.post("/settings")
+def update_settings(s: Settings):
+    save_settings(s.dict())
+    return {"ok": True}
+
+
 # ── Postar agora ──────────────────────────────────────────────────────────────
 
 posting_status = {"running": False, "last_result": None}
+
+def _check_settings() -> str | None:
+    """Retorna mensagem de bloqueio ou None se pode postar."""
+    s = load_settings()
+    if not s["auto_post"]:
+        return "Postagem automática desativada nas configurações."
+    now = datetime.now()
+    if now.weekday() not in s["active_days"]:
+        return "Dia inativo nas configurações."
+    if int(now.strftime("%H")) < int(s["start_hour"]):
+        return f"Fora do horário ativo (início: {s['start_hour']}h)."
+    if int(now.strftime("%H")) >= int(s["end_hour"]):
+        return f"Fora do horário ativo (fim: {s['end_hour']}h)."
+    # Verifica limite diário
+    today = now.strftime("%Y-%m-%d")
+    log = carregar_log()
+    posts_hoje = sum(1 for p in log if p.get("posted_at", "").startswith(today))
+    if posts_hoje >= s["posts_per_day"]:
+        return f"Limite diário atingido ({posts_hoje}/{s['posts_per_day']} posts)."
+    return None
 
 def executar_post():
     posting_status["running"] = True
@@ -180,6 +247,9 @@ def executar_post():
 def post_now(background_tasks: BackgroundTasks):
     if posting_status["running"]:
         raise HTTPException(status_code=409, detail="Já há uma postagem em andamento.")
+    bloqueio = _check_settings()
+    if bloqueio:
+        raise HTTPException(status_code=403, detail=bloqueio)
     background_tasks.add_task(executar_post)
     return {"message": "Postagem iniciada em segundo plano."}
 
