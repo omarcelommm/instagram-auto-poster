@@ -49,7 +49,16 @@ def _drive_service():
     scopes = ["https://www.googleapis.com/auth/drive.readonly"]
     if GOOGLE_SERVICE_ACCOUNT_JSON:
         import json as _json
-        info = _json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        # Railway may store literal newlines in the private key — normalize before parsing
+        raw = GOOGLE_SERVICE_ACCOUNT_JSON.replace('\r\n', '\n').replace('\r', '\n')
+        try:
+            info = _json.loads(raw)
+        except _json.JSONDecodeError:
+            # Fallback: escape literal newlines inside the JSON string value
+            raw = raw.replace('\n', '\\n')
+            info = _json.loads(raw)
+        if 'private_key' in info:
+            info['private_key'] = info['private_key'].replace('\\n', '\n')
         creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
     else:
         sa_file = Path(__file__).parent / "service_account.json"
