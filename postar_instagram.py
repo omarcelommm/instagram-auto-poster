@@ -141,8 +141,9 @@ def carregar_log() -> list:
             def fmt_dt(dt):
                 if not dt:
                     return None
-                # Banco armazena UTC (psycopg2 converte timezone-aware → UTC em TIMESTAMP)
-                return dt.replace(tzinfo=tz_utc).astimezone(tz_brasilia).isoformat()
+                # psycopg2 + TIMESTAMP WITHOUT TIME ZONE: armazena o horário local (Brasília)
+                # sem conversão para UTC — basta anexar o tz correto diretamente.
+                return dt.replace(tzinfo=tz_brasilia).isoformat()
             return [
                 {"filename": r[0], "post_id": r[1], "caption": r[2], "video_url": r[3],
                  "posted_at": fmt_dt(r[4])}
