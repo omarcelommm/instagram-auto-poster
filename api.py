@@ -177,6 +177,10 @@ def get_analytics():
         if posted_at:
             try:
                 dt = datetime.fromisoformat(posted_at)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=TZ_BRASILIA)
+                else:
+                    dt = dt.astimezone(TZ_BRASILIA)
                 hour = dt.hour
                 day = dt.weekday()  # 0=seg, 6=dom
             except Exception:
