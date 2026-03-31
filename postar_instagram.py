@@ -141,9 +141,8 @@ def carregar_log() -> list:
             def fmt_dt(dt):
                 if not dt:
                     return None
-                # psycopg2 + TIMESTAMP WITHOUT TIME ZONE: armazena o horário local (Brasília)
-                # sem conversão para UTC — basta anexar o tz correto diretamente.
-                return dt.replace(tzinfo=tz_brasilia).isoformat()
+                # DB armazena UTC (psycopg2 converte aware datetime → UTC antes de inserir)
+                return dt.replace(tzinfo=tz_utc).astimezone(tz_brasilia).isoformat()
             return [
                 {"filename": r[0], "post_id": r[1], "caption": r[2], "video_url": r[3],
                  "posted_at": fmt_dt(r[4])}
@@ -166,7 +165,7 @@ def carregar_postados() -> set:
 def salvar_postado(nome: str, post_id: str, legenda: str, video_url: str):
     from datetime import datetime, timezone, timedelta
     tz_brasilia = timezone(timedelta(hours=-3))
-    agora = datetime.now(tz_brasilia)
+    agora = datetime.now(timezone.utc)  # sempre UTC para consistência com o banco
     conn = _db_conn()
     if conn:
         try:
