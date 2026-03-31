@@ -128,6 +128,9 @@ def _db_conn():
     return conn
 
 def carregar_log() -> list:
+    from datetime import timezone, timedelta
+    tz_utc = timezone.utc
+    tz_brasilia = timezone(timedelta(hours=-3))
     conn = _db_conn()
     if conn:
         try:
@@ -135,9 +138,14 @@ def carregar_log() -> list:
                 cur.execute("SELECT filename, post_id, caption, video_url, posted_at FROM posted_videos ORDER BY posted_at ASC")
                 rows = cur.fetchall()
             conn.close()
+            def fmt_dt(dt):
+                if not dt:
+                    return None
+                # Banco armazena UTC (psycopg2 converte timezone-aware → UTC em TIMESTAMP)
+                return dt.replace(tzinfo=tz_utc).astimezone(tz_brasilia).isoformat()
             return [
                 {"filename": r[0], "post_id": r[1], "caption": r[2], "video_url": r[3],
-                 "posted_at": r[4].isoformat() if r[4] else None}
+                 "posted_at": fmt_dt(r[4])}
                 for r in rows
             ]
         except Exception as e:

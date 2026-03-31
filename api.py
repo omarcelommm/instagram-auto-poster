@@ -143,6 +143,7 @@ def get_analytics():
                 f"{GRAPH_API}/{post_id}/insights",
                 params={
                     "metric": "reach,saved,ig_reels_aggregated_all_plays_count",
+                    "period": "lifetime",
                     "access_token": META_ACCESS_TOKEN,
                 },
                 timeout=15,
@@ -160,7 +161,7 @@ def get_analytics():
             resp2 = requests.get(
                 f"{GRAPH_API}/{post_id}",
                 params={
-                    "fields": "like_count,comments_count",
+                    "fields": "like_count,comments_count,play_count",
                     "access_token": META_ACCESS_TOKEN,
                 },
                 timeout=15,
@@ -168,6 +169,9 @@ def get_analytics():
             media = resp2.json()
             metrics["likes"] = media.get("like_count", 0)
             metrics["comments"] = media.get("comments_count", 0)
+            # play_count como fallback caso insights não retorne plays
+            if media.get("play_count"):
+                metrics["play_count_media"] = media.get("play_count", 0)
         except Exception:
             pass
 
@@ -183,7 +187,7 @@ def get_analytics():
 
         enriched.append({
             **post,
-            "plays": metrics.get("ig_reels_aggregated_all_plays_count", 0),
+            "plays": metrics.get("ig_reels_aggregated_all_plays_count") or metrics.get("play_count_media", 0),
             "likes": metrics.get("likes", 0),
             "comments": metrics.get("comments", 0),
             "saved": metrics.get("saved", 0),
