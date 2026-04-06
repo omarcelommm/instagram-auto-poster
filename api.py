@@ -110,6 +110,39 @@ def get_queue():
     return {"queue": fila}
 
 
+# ── Debug: ver resposta bruta da API Meta ────────────────────────────────────
+
+@app.get("/debug/{post_id}")
+def debug_post(post_id: str):
+    """Retorna resposta bruta da API Meta para diagnóstico de métricas."""
+    results = {}
+
+    # Testa métricas de insights com vários nomes possíveis
+    for metric in [
+        "plays",
+        "ig_reels_aggregated_all_plays_count",
+        "ig_reels_video_view_total_time",
+        "reach,saved",
+        "total_interactions",
+    ]:
+        resp = requests.get(
+            f"{GRAPH_API}/{post_id}/insights",
+            params={"metric": metric, "period": "lifetime", "access_token": META_ACCESS_TOKEN},
+            timeout=15,
+        )
+        results[f"insights:{metric}"] = resp.json()
+
+    # Testa campos diretos no objeto de mídia
+    resp2 = requests.get(
+        f"{GRAPH_API}/{post_id}",
+        params={"fields": "like_count,comments_count,media_type,timestamp", "access_token": META_ACCESS_TOKEN},
+        timeout=15,
+    )
+    results["media_fields"] = resp2.json()
+
+    return results
+
+
 # ── Analytics de um post ──────────────────────────────────────────────────────
 
 @app.get("/posts/{post_id}/insights")
