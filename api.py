@@ -189,12 +189,13 @@ def get_analytics():
         except Exception:
             pass
 
+        permalink = None
         try:
-            # Curtidas e comentários vêm do objeto de mídia diretamente
+            # Curtidas, comentários e permalink vêm do objeto de mídia diretamente
             resp2 = requests.get(
                 f"{GRAPH_API}/{post_id}",
                 params={
-                    "fields": "like_count,comments_count",
+                    "fields": "like_count,comments_count,permalink",
                     "access_token": META_ACCESS_TOKEN,
                 },
                 timeout=15,
@@ -202,6 +203,7 @@ def get_analytics():
             media = resp2.json()
             metrics["likes"] = media.get("like_count", 0)
             metrics["comments"] = media.get("comments_count", 0)
+            permalink = media.get("permalink")
         except Exception:
             pass
 
@@ -226,6 +228,7 @@ def get_analytics():
             "watch_time_ms": metrics.get("ig_reels_video_view_total_time", 0),
             "likes": metrics.get("likes", 0),
             "comments": metrics.get("comments", 0),
+            "permalink": permalink,
             "hour": hour,
             "day": day,
         })
