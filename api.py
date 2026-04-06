@@ -171,11 +171,11 @@ def get_analytics():
         post_id = post["post_id"]
         metrics = {}
         try:
-            # Insights: reach, saved e plays para Reels
+            # Insights: reach, saved e tempo de visualização (plays não é suportado via API)
             resp = requests.get(
                 f"{GRAPH_API}/{post_id}/insights",
                 params={
-                    "metric": "reach,saved,ig_reels_aggregated_all_plays_count",
+                    "metric": "reach,saved,ig_reels_video_view_total_time",
                     "period": "lifetime",
                     "access_token": META_ACCESS_TOKEN,
                 },
@@ -221,11 +221,11 @@ def get_analytics():
 
         enriched.append({
             **post,
-            "plays": metrics.get("ig_reels_aggregated_all_plays_count", 0),
+            "reach": metrics.get("reach", 0),
+            "saved": metrics.get("saved", 0),
+            "watch_time_ms": metrics.get("ig_reels_video_view_total_time", 0),
             "likes": metrics.get("likes", 0),
             "comments": metrics.get("comments", 0),
-            "saved": metrics.get("saved", 0),
-            "reach": metrics.get("reach", 0),
             "hour": hour,
             "day": day,
         })
