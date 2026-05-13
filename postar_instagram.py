@@ -22,20 +22,14 @@ except ImportError:
     pass
 import anthropic
 import requests
-import cloudinary
-import cloudinary.uploader
+import boto3
+from botocore.config import Config as BotoConfig
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
-
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-)
 
 # Config
 INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
@@ -44,6 +38,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1R6Bvuj5rwDDezfiIn649RUvTVLpyvQvb")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
+R2_BUCKET = os.getenv("R2_BUCKET", "instagram-autoposter")
+R2_PUBLIC_BASE = os.getenv("R2_PUBLIC_BASE")
 
 POSTED_LOG = Path(__file__).parent / "posted_videos.json"
 GRAPH_API = "https://graph.instagram.com/v22.0"
@@ -269,36 +269,35 @@ Escreva apenas a legenda, sem comentários adicionais."""
     return resposta.content[0].text
 
 
-# ── Upload para host temporário ────────────────────────────────────────────────
+# ── Upload para host temporário (Cloudflare R2) ────────────────────────────────
 
-def comprimir_video(video_path: Path) -> Path:
-    tamanho_mb = video_path.stat().st_size / (1024 * 1024)
-    if tamanho_mb <= 80:
-        return video_path
-    print(f"Vídeo grande ({tamanho_mb:.0f}MB) — comprimindo antes do upload...")
-    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    tmp.close()
-    subprocess.run(
-        ["ffmpeg", "-i", str(video_path), "-vcodec", "libx264", "-crf", "28",
-         "-acodec", "aac", "-b:a", "128k", "-movflags", "+faststart", tmp.name, "-y"],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300,
-    )
-    return Path(tmp.name)
+_r2_client = None
+
+def _r2():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name="auto",
+            config=BotoConfig(signature_version="s3v4", retries={"max_attempts": 3}),
+        )
+    return _r2_client
 
 
 def fazer_upload_publico(video_path: Path) -> str:
+    import uuid
     tamanho_mb = video_path.stat().st_size / (1024 * 1024)
-    print(f"Fazendo upload do vídeo para Cloudinary ({tamanho_mb:.1f}MB)...")
-    try:
-        resultado = cloudinary.uploader.upload_large(
-            str(video_path),
-            resource_type="video",
-            folder="instagram_posts",
-            chunk_size=6 * 1024 * 1024,
-        )
-    finally:
-        pass
-    url = resultado["secure_url"]
+    print(f"Fazendo upload do vídeo para R2 ({tamanho_mb:.1f}MB)...")
+    ext = video_path.suffix or ".mp4"
+    key = f"instagram_posts/{uuid.uuid4().hex}{ext}"
+    _r2().upload_file(
+        str(video_path), R2_BUCKET, key,
+        ExtraArgs={"ContentType": "video/mp4"},
+    )
+    url = f"{R2_PUBLIC_BASE.rstrip('/')}/{key}"
     print(f"URL pública: {url}")
     return url
 
